@@ -46,3 +46,5 @@ tmp
 checkpoints
 
 *.pyc
+
+.vscode/
