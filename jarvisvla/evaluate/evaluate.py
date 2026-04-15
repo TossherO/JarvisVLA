@@ -1,4 +1,5 @@
 import argparse
+import inspect
 from rich import print,console
 from pathlib import Path
 import os
@@ -25,6 +26,24 @@ from jarvisvla.utils import file_utils
 from jarvisvla.evaluate import agent_wrapper
 
 
+def make_init_inventory_callback(cfg):
+    """Build InitInventoryCallback with version-compatible kwargs."""
+    sig = inspect.signature(InitInventoryCallback.__init__)
+    params = sig.parameters
+    kwargs = {}
+
+    # MineStudio>=1.1.6 uses distraction_level
+    if "distraction_level" in params:
+        kwargs["distraction_level"] = getattr(cfg, "inventory_distraction_level", "zero")
+    # Older code paths used inventory_distraction_level/equip_distraction_level
+    if "inventory_distraction_level" in params:
+        kwargs["inventory_distraction_level"] = getattr(cfg, "inventory_distraction_level", "zero")
+    if "equip_distraction_level" in params:
+        kwargs["equip_distraction_level"] = "normal"
+
+    return InitInventoryCallback(cfg.init_inventory, **kwargs)
+
+
 def evaluate(video_path,checkpoints,environment_config:dict,model_config:dict,device="cuda:0",base_url=None):
 
     hydra.core.global_hydra.GlobalHydra.instance().clear() # 清理 Hydra 的全局实例
@@ -45,10 +64,7 @@ def evaluate(video_path,checkpoints,environment_config:dict,model_config:dict,de
         SpeedTestCallback(50), 
         TaskCallback(getattr(cfg,"task_conf",None)),
         RewardsCallback(getattr(cfg,"reward_conf",None)),
-        InitInventoryCallback(cfg.init_inventory,
-                                inventory_distraction_level=cfg.inventory_distraction_level,
-                                equip_distraction_level="normal"
-                                ),
+        make_init_inventory_callback(cfg),
         CommandsCallback(getattr(cfg,"command",[]),),
         record_callback,
     ]
