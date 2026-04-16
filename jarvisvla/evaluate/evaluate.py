@@ -65,9 +65,11 @@ def evaluate(video_path,checkpoints,environment_config:dict,model_config:dict,de
         TaskCallback(getattr(cfg,"task_conf",None)),
         RewardsCallback(getattr(cfg,"reward_conf",None)),
         make_init_inventory_callback(cfg),
-        CommandsCallback(getattr(cfg,"command",[]),),
         record_callback,
     ]
+    commands = list(getattr(cfg, "command", []) or [])
+    if commands:
+        callbacks.append(CommandsCallback(commands))
     #if hasattr(cfg,"teleport"):
     #    callbacks.append(TeleportCallback(x=cfg.teleport.x, y=cfg.teleport.y, z=cfg.teleport.z,))
     if cfg.mobs:
@@ -177,6 +179,7 @@ def multi_evaluate(args):
         history_num = args.history_num,
         instruction_type = args.instruction_type,
         action_chunk_len = args.action_chunk_len,
+        allow_multi_image = args.allow_multi_image,
     )
     environment_config = dict(
         env_config = args.env_config,
@@ -230,6 +233,7 @@ if __name__ == "__main__":
     parser.add_argument('--temperature','-t',type=float,default=0.7)
     parser.add_argument('--history-num',type=int,default=0)
     parser.add_argument('--action-chunk-len',type=int,default=1)
+    parser.add_argument('--allow-multi-image', action='store_true')
 
     args = parser.parse_args()
 
@@ -238,6 +242,7 @@ if __name__ == "__main__":
         history_num = args.history_num,
         instruction_type = args.instruction_type,
         action_chunk_len = args.action_chunk_len,
+        allow_multi_image = args.allow_multi_image,
     )
     environment_config = dict(
         env_config = args.env_config,

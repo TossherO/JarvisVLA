@@ -1,13 +1,13 @@
 #!/bin/bash
 
-base_url=http://localhost:11000/v1
+base_url=http://localhost:8000/v1
 workers=5
 max_frames=300
 temperature=0.9
 history_num=2
 action_chunk_len=1
 instruction_type="normal"
-model_local_path="/nfs-shared/models/JarvisVLA-Qwen2-VL-7B"
+model_local_path="/share/public_datasets/VLA/nitrogen/jarvisvla_models/JarvisVLA-Qwen2-VL-7B"
 
 
 tasks=(
@@ -35,6 +35,7 @@ for task in "${tasks[@]}"; do
             --history-num $history_num \
             --instruction-type $instruction_type \
             --action-chunk-len $action_chunk_len \
+            --allow-multi-image \
             #--verbos True \
         # 如果 Python 脚本执行成功，则退出循环
         if [[ $? -eq 0 ]]; then

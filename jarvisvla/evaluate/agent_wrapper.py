@@ -34,7 +34,8 @@ class VLLM_AGENT:
     def __init__(self,checkpoint_path, base_url, api_key="EMPTY",
                  history_num=0,action_chunk_len=1, bpe=0,
                  instruction_type:Literal['simple','recipe','normal'] = 'normal',
-                 temperature=0.5):
+                 temperature=0.5,
+                 allow_multi_image=False):
         
         self.LLM_backbone,self.VLM_backbone = load_model.load_visual_model(checkpoint_path=checkpoint_path)
         self.action_tokenizer = action_mapping.OneActionTokenizer(tokenizer_type=self.LLM_backbone)
@@ -60,6 +61,8 @@ class VLLM_AGENT:
             api_key=api_key,
             base_url=base_url,
         )
+        # Keep single-image mode by default for compatibility with stricter vLLM setups.
+        self.single_image_per_request = bool(base_url) and (not allow_multi_image)
         models = self.client.models.list()
         self.model = models.data[0].id
         
@@ -237,7 +240,11 @@ class VLLM_AGENT:
                 if not hdx: #hdx==0
                     prompt_input = private_instruction + prompt_input
                 #print(ac,prompt_input,)
-                messages.append(self.processor_wrapper.create_message_vllm(role="user",input_type="image",prompt=[prompt_input],image=[im]))
+                if self.single_image_per_request:
+                    # Keep historical context in text to avoid sending multiple images in one request.
+                    messages.append(self.processor_wrapper.create_message_vllm(role="user",input_type="text",prompt=[prompt_input]))
+                else:
+                    messages.append(self.processor_wrapper.create_message_vllm(role="user",input_type="image",prompt=[prompt_input],image=[im]))
                 messages.append(self.processor_wrapper.create_message_vllm(role="assistant",input_type="text",prompt=[ac],))
             
         prompt_input = ""
