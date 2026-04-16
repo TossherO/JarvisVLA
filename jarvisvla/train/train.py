@@ -50,6 +50,60 @@ from jarvisvla.train.data_collator import make_collator
 
 tqdm.pandas()    
 
+DEFAULT_QWEN2_VL_CHAT_TEMPLATE = (
+    "{% set image_count = namespace(value=0) %}"
+    "{% set video_count = namespace(value=0) %}"
+    "{% for message in messages %}"
+    "{% if loop.first and message['role'] != 'system' %}"
+    "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
+    "{% endif %}"
+    "<|im_start|>{{ message['role'] }}\n"
+    "{% if message['content'] is string %}{{ message['content'] }}<|im_end|>\n"
+    "{% else %}"
+    "{% for content in message['content'] %}"
+    "{% if content['type'] == 'image' or 'image' in content or 'image_url' in content %}"
+    "{% set image_count.value = image_count.value + 1 %}"
+    "<|vision_start|><|image_pad|><|vision_end|>"
+    "{% elif content['type'] == 'video' or 'video' in content %}"
+    "{% set video_count.value = video_count.value + 1 %}"
+    "<|vision_start|><|video_pad|><|vision_end|>"
+    "{% elif 'text' in content %}{{ content['text'] }}{% endif %}"
+    "{% endfor %}<|im_end|>\n"
+    "{% endif %}"
+    "{% endfor %}"
+    "{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
+)
+
+
+def _load_chat_template_from_json(model_path: str):
+    template_path = pathlib.Path(model_path) / "chat_template.json"
+    if not template_path.exists():
+        return None
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            return payload.get("chat_template")
+        if isinstance(payload, str):
+            return payload
+    except Exception:
+        return None
+    return None
+
+
+def _is_role_aware_chat_template(template: str) -> bool:
+    if not template:
+        return False
+    return ("message['role']" in template) or ('message["role"]' in template)
+
+
+def _safe_render_chat_template(tokenizer, conversations) -> str:
+    try:
+        rendered = tokenizer.apply_chat_template(conversations, tokenize=False, add_generation_prompt=False)
+        return rendered if isinstance(rendered, str) else ""
+    except Exception:
+        return ""
+
 if __name__ == "__main__":
     
     parser = TrlParser((ScriptArguments, SFTConfig, ModelConfig, MoreConfig))
@@ -69,8 +123,6 @@ if __name__ == "__main__":
     
     model_name = model_config.model_name_or_path.lower().replace('-','_')
     
-    ### discard: if no chat_template is defined in tokenizer_config.json, use the default one
-    DEFAULT_CHAT_TEMPLATE = """{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = message['role'] + ':\n\n'+ message['content'] + '\n' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}"""
     torch_dtype = (
         model_config.torch_dtype
         if model_config.torch_dtype in ["auto", None]
@@ -95,14 +147,38 @@ if __name__ == "__main__":
         processor = Qwen2VLProcessor.from_pretrained(model_config.model_name_or_path,**processor_config)
         with open(QWEN_SPECIAL_TOKENS, "r") as file:
             special_token = json.load(file)
-        processor.tokenizer.add_special_tokens({"additional_special_tokens":special_token})
+        num_new_tokens = processor.tokenizer.add_special_tokens({"additional_special_tokens":special_token})
+
+        model_chat_template = _load_chat_template_from_json(model_config.model_name_or_path)
+        if not _is_role_aware_chat_template(processor.tokenizer.chat_template):
+            if _is_role_aware_chat_template(model_chat_template):
+                processor.tokenizer.chat_template = model_chat_template
+            else:
+                processor.tokenizer.chat_template = DEFAULT_QWEN2_VL_CHAT_TEMPLATE
+
         model_kwargs["attn_implementation"] = "flash_attention_2"
         model = Qwen2VLForConditionalGeneration.from_pretrained(model_config.model_name_or_path, **model_kwargs)
+        if num_new_tokens > 0:
+            model.resize_token_embeddings(len(processor.tokenizer))
     else:
         raise ValueError(f"{model_name} unknown")
-    
+
     if not processor.tokenizer.chat_template:
-        raise ValueError("No chat_template found in the tokenizer_config.json, please set the chat_template in the tokenizer_config.json.")
+        processor.tokenizer.chat_template = DEFAULT_QWEN2_VL_CHAT_TEMPLATE
+
+    # Verify the chat template can render at least one training sample.
+    try:
+        sample_stream = load_dataset(sft_script_args.dataset_name, split="train", streaming=True)
+        sample_item = next(iter(sample_stream))
+        sample_conversations = sample_item.get("conversations", [])
+        rendered = _safe_render_chat_template(processor.tokenizer, sample_conversations)
+        if not rendered.strip():
+            processor.tokenizer.chat_template = DEFAULT_QWEN2_VL_CHAT_TEMPLATE
+            rendered = _safe_render_chat_template(processor.tokenizer, sample_conversations)
+        if not rendered.strip():
+            raise ValueError("chat_template is incompatible with dataset conversation schema.")
+    except Exception as e:
+        raise ValueError(f"Failed to validate chat template compatibility: {e}")
         
     processor.tokenizer.padding_side = "right"
     if getattr(processor.tokenizer, "pad_token", None) is None:
@@ -201,7 +277,7 @@ if __name__ == "__main__":
         preprocess_logits_for_metrics=None,
     )
     if training_args.local_rank == 0 or training_args.local_rank == -1:
-        print_trainable_parameters(trainer.model,trainer.optimizer,f"logs/model_structure.json")
+        print_trainable_parameters(trainer.model,trainer.optimizer,record_path=None)
 
     if training_args.do_train:
         if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):

@@ -40,6 +40,14 @@ def print_trainable_parameters(model:torch.nn.Module,optimizer:torch.optim.Optim
     trainable_params = 0
     all_param = 0
     model_shapes = []
+
+    def get_effective_numel(parameter: torch.nn.Parameter) -> int:
+        # Under ZeRO-3, local shard numel can be 0 and the full size is stored in ds_numel.
+        local_numel = parameter.numel()
+        if local_numel == 0 and hasattr(parameter, "ds_numel"):
+            return int(parameter.ds_numel)
+        return int(local_numel)
+
     for name, parameter in model.named_parameters():
         if optimizer:
             optimizer_group_idx = None
@@ -50,9 +58,10 @@ def print_trainable_parameters(model:torch.nn.Module,optimizer:torch.optim.Optim
             model_shapes.append([parameter.requires_grad,name,parameter.shape,optimizer_group_idx])
         else:
             model_shapes.append([parameter.requires_grad,name,parameter.shape])
-        all_param += parameter.numel()
+        effective_numel = get_effective_numel(parameter)
+        all_param += effective_numel
         if parameter.requires_grad:
-            trainable_params += parameter.numel()
+            trainable_params += effective_numel
     import json
     if record_path:
         pathlib.Path(record_path).parent.mkdir(parents=True,exist_ok=True)
@@ -62,6 +71,10 @@ def print_trainable_parameters(model:torch.nn.Module,optimizer:torch.optim.Optim
         with open(record_path.replace(".json","-scratch.txt"),mode="w",encoding="UTF-8") as f:
             print(optimizer, file=f)
             print(model, file=f)
+    if all_param == 0:
+        print("trainable params: 0 || all params: 0 || trainable%: 0.0")
+        return
+
     print(
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
