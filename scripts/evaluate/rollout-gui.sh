@@ -1,8 +1,8 @@
 #!/bin/bash
 
 base_url=http://localhost:8000/v1
-workers=5
-max_frames=400
+workers=1
+max_frames=1000
 temperature=0.9
 history_num=4
 action_chunk_len=1
