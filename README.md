@@ -48,6 +48,17 @@ sh scripts/evaluate/rollout-kill.sh
 
 Prepare the dataset and base model, and write their locations in the shell below.
 
+Unified three-stage entrypoints:
+
+```shell
+bash scripts/train/stage1_train.sh
+bash scripts/train/stage2_train.sh
+bash scripts/train/stage3_train.sh
+
+# Or use the generic launcher:
+bash scripts/train/run_stage.sh stage1 configs/stages/stage1_qwen2_vl_7b.json
+```
+
 - Single GPU
 ```shell
 sh scripts/vla/vla_qwen2_vl_7b_sft.sh

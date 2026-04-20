@@ -38,6 +38,7 @@ from transformers import Trainer
 
 import json
 import re
+from typing import Any, Dict
 
 from rich import print,console
 from jarvisvla.train.utils_train import (
@@ -104,10 +105,76 @@ def _safe_render_chat_template(tokenizer, conversations) -> str:
     except Exception:
         return ""
 
+
+def _load_stage_config(config_path: str) -> Dict[str, Any]:
+    config_file = pathlib.Path(config_path)
+    if not config_file.exists():
+        raise ValueError(f"Stage config file not found: {config_path}")
+    with open(config_file, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError("Stage config must be a JSON object.")
+    return payload
+
+
+def _apply_namespace_overrides(namespace_obj, overrides: Dict[str, Any], namespace_name: str, strict: bool = False):
+    unknown_keys = []
+    for key, value in overrides.items():
+        if hasattr(namespace_obj, key):
+            setattr(namespace_obj, key, value)
+        else:
+            unknown_keys.append(key)
+
+    if unknown_keys:
+        msg = f"Unknown keys in stage config namespace '{namespace_name}': {unknown_keys}"
+        if strict:
+            raise ValueError(msg)
+        print(f"[yellow]{msg}[/yellow]")
+
+
+def _apply_stage_config(stage_cfg: Dict[str, Any], sft_script_args, training_args, model_config, more_cfg):
+    strict = bool(stage_cfg.get("strict", getattr(more_cfg, "strict_stage_config", False)))
+
+    if stage_cfg.get("stage_name") and not getattr(more_cfg, "stage_name", ""):
+        more_cfg.stage_name = str(stage_cfg["stage_name"])
+
+    alias_map = {
+        "script_arguments": sft_script_args,
+        "script_args": sft_script_args,
+        "training_arguments": training_args,
+        "training_args": training_args,
+        "model_arguments": model_config,
+        "model_args": model_config,
+        "more_arguments": more_cfg,
+        "more_args": more_cfg,
+    }
+
+    for key, target in alias_map.items():
+        overrides = stage_cfg.get(key)
+        if isinstance(overrides, dict):
+            _apply_namespace_overrides(target, overrides, key, strict=strict)
+
+
+def _resolve_dataset_split(raw_datasets, preferred_name: str, fallback_candidates):
+    if preferred_name in raw_datasets:
+        return preferred_name
+    for fallback_name in fallback_candidates:
+        if fallback_name in raw_datasets:
+            return fallback_name
+    return None
+
 if __name__ == "__main__":
     
     parser = TrlParser((ScriptArguments, SFTConfig, ModelConfig, MoreConfig))
     sft_script_args, training_args, model_config, more_cfg = parser.parse_args_and_config()
+
+    if getattr(more_cfg, "stage_config_path", ""):
+        stage_cfg = _load_stage_config(more_cfg.stage_config_path)
+        _apply_stage_config(stage_cfg, sft_script_args, training_args, model_config, more_cfg)
+        if training_args.local_rank in {0, -1}:
+            print(f"[green]Loaded stage config:[/green] {more_cfg.stage_config_path}")
+            if getattr(more_cfg, "stage_name", ""):
+                print(f"[green]Active stage:[/green] {more_cfg.stage_name}")
 
     training_args.gradient_checkpointing_kwargs = dict(use_reentrant=False)
     # Force use our print callback
@@ -168,7 +235,8 @@ if __name__ == "__main__":
 
     # Verify the chat template can render at least one training sample.
     try:
-        sample_stream = load_dataset(sft_script_args.dataset_name, split="train", streaming=True)
+        sample_split = getattr(more_cfg, "train_split", "train")
+        sample_stream = load_dataset(sft_script_args.dataset_name, split=sample_split, streaming=True)
         sample_item = next(iter(sample_stream))
         sample_conversations = sample_item.get("conversations", [])
         rendered = _safe_render_chat_template(processor.tokenizer, sample_conversations)
@@ -210,9 +278,17 @@ if __name__ == "__main__":
     # DataCollator
     ##################
 
-    # 找到image_fold
-    image_fold = pathlib.Path(sft_script_args.dataset_name).parent
-    image_fold = image_fold.parent if image_fold.name=="output" else image_fold
+    # Resolve image folder for local datasets; allow explicit override from stage config.
+    if getattr(more_cfg, "image_folder", ""):
+        image_fold = pathlib.Path(more_cfg.image_folder)
+    else:
+        dataset_path = pathlib.Path(sft_script_args.dataset_name)
+        if dataset_path.exists():
+            image_fold = dataset_path.parent
+            image_fold = image_fold.parent if image_fold.name == "output" else image_fold
+        else:
+            image_fold = pathlib.Path(".")
+
     data_collator = make_collator(more_cfg.collator_type, 
                                   processor=processor, 
                                   model_path=model_name,
@@ -227,8 +303,25 @@ if __name__ == "__main__":
     ################
     
     raw_datasets = load_dataset(sft_script_args.dataset_name)
+
+    train_split = _resolve_dataset_split(
+        raw_datasets,
+        preferred_name=getattr(more_cfg, "train_split", "train"),
+        fallback_candidates=["train"],
+    )
+    if train_split is None:
+        raise ValueError(
+            f"Train split not found. Requested '{getattr(more_cfg, 'train_split', 'train')}', "
+            f"available splits: {list(raw_datasets.keys())}"
+        )
+
+    eval_split = _resolve_dataset_split(
+        raw_datasets,
+        preferred_name=getattr(more_cfg, "eval_split", "valid"),
+        fallback_candidates=["valid", "validation"],
+    )
     
-    train_dataset = raw_datasets['train']
+    train_dataset = raw_datasets[train_split]
     train_dataset_len = train_dataset.num_rows
     train_dataset_len = int(more_cfg.dataset_p*train_dataset_len)
     train_dataset = train_dataset.shuffle(training_args.seed)
@@ -237,10 +330,17 @@ if __name__ == "__main__":
     else:
         select_ids = range(train_dataset_len)
     train_dataset = train_dataset.select(select_ids) 
-    eval_dataset = raw_datasets['valid']
+    eval_dataset = raw_datasets[eval_split] if eval_split is not None else None
+
+    if (training_args.do_eval or training_args.eval_strategy != "no") and eval_dataset is None:
+        raise ValueError(
+            f"Eval split not found. Requested '{getattr(more_cfg, 'eval_split', 'valid')}', "
+            f"available splits: {list(raw_datasets.keys())}"
+        )
     
     if training_args.local_rank in { 0 ,-1 }:
         print(train_dataset_len,more_cfg.dataset_p,int(more_cfg.dataset_p*train_dataset_len))
+        print(f"[green]Using splits:[/green] train={train_split}, eval={eval_split}")
     
     ################
     # Optional rich context managers

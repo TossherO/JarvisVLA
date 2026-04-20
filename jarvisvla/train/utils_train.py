@@ -15,7 +15,13 @@ IGNORE_TOKEN_ID = -100
 
 @dataclass
 class MoreConfig:
+    stage_name: str = field(default="", metadata={"help": "Unified stage name: stage1/stage2/stage3"})
+    stage_config_path: str = field(default="", metadata={"help": "Path to stage config JSON file"})
+    strict_stage_config: bool = field(default=False, metadata={"help": "Raise error on unknown keys in stage config"})
     dataset_p: float = field(default=1.0, metadata={"help": "Dataset parameter p"})
+    train_split: str = field(default="train", metadata={"help": "Training split name"})
+    eval_split: str = field(default="valid", metadata={"help": "Evaluation split name"})
+    image_folder: str = field(default="", metadata={"help": "Optional image folder override for data collator"})
     collator_type: str = field(default="MultimodalChatDataCollatorforVLM", metadata={"help": "types of collator"})
     fix_visual_encoder: bool = field(default=False, metadata={"help": "fix visual encoder"})
     fix_visual_adapter: bool = field(default=False, metadata={"help": "fix visual adapter layer"})

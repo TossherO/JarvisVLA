@@ -35,3 +35,46 @@
 - 样本 id
 
 `data_collator.py` 会将这些信息统一处理后输出给 `Trainer`。
+
+## 三阶段统一框架（新增）
+
+当前训练入口支持通过统一的 stage 配置文件启动三阶段训练。
+
+- 新增配置目录：`configs/stages/`
+  - `stage1_qwen2_vl_7b.json`
+  - `stage2_qwen2_vl_7b.json`
+  - `stage3_qwen2_vl_7b.json`
+- 新增启动脚本：`scripts/train/`
+  - `run_stage.sh`（统一入口）
+  - `stage1_train.sh`
+  - `stage2_train.sh`
+  - `stage3_train.sh`
+
+`train.py` 新增支持：
+
+- `--stage_name`：阶段名（`stage1`/`stage2`/`stage3`）
+- `--stage_config_path`：阶段配置 JSON 路径
+- `--strict_stage_config`：是否对配置中的未知字段报错
+
+配置文件支持四类参数命名空间：
+
+- `script_arguments`：对应 `ScriptArguments`（例如 `dataset_name`）
+- `training_arguments`：对应 `SFTConfig` / `TrainingArguments`
+- `model_arguments`：对应 `ModelConfig`
+- `more_arguments`：对应 `MoreConfig`
+
+此外，`MoreConfig` 新增：
+
+- `train_split`、`eval_split`：可配置训练/验证 split 名称
+- `image_folder`：可显式覆盖 collator 的图像根目录
+
+示例：
+
+```bash
+bash scripts/train/stage1_train.sh
+bash scripts/train/stage2_train.sh
+bash scripts/train/stage3_train.sh
+
+# 或使用统一入口
+bash scripts/train/run_stage.sh stage3 configs/stages/stage3_qwen2_vl_7b.json
+```

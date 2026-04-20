@@ -1,0 +1,55 @@
+{
+  "stage_name": "stage1",
+  "script_arguments": {
+    "dataset_name": "/share/public_datasets/VLA/nitrogen/minecraft-vlp-stage1"
+  },
+  "training_arguments": {
+    "deepspeed": "configs/deepspeed_config_s1.json",
+    "output_dir": "outputs/stage1_qwen2_vl_7b",
+    "run_name": "stage1_qwen2_vl_7b",
+    "report_to": "wandb",
+    "do_train": true,
+    "do_eval": true,
+    "eval_strategy": "steps",
+    "eval_steps": 1000,
+    "save_strategy": "steps",
+    "save_steps": 1000,
+    "save_total_limit": 5,
+    "num_train_epochs": 1,
+    "learning_rate": 5e-6,
+    "warmup_ratio": 0.03,
+    "warmup_steps": 200,
+    "lr_scheduler_type": "cosine",
+    "per_device_train_batch_size": 8,
+    "per_device_eval_batch_size": 8,
+    "gradient_accumulation_steps": 1,
+    "logging_strategy": "steps",
+    "logging_steps": 10,
+    "remove_unused_columns": false,
+    "bf16": true,
+    "torch_dtype": "bfloat16",
+    "gradient_checkpointing": true,
+    "max_seq_length": 512,
+    "seed": 43,
+    "dataloader_num_workers": 4,
+    "dataloader_pin_memory": true
+  },
+  "model_arguments": {
+    "model_name_or_path": "/share/public_datasets/VLA/nitrogen/jarvisvla_models/Qwen2-VL-7B",
+    "attn_implementation": "flash_attention_2",
+    "torch_dtype": "bfloat16",
+    "trust_remote_code": true
+  },
+  "more_arguments": {
+    "collator_type": "MultimodalChatDataCollatorforVLM",
+    "fix_visual_encoder": true,
+    "fix_visual_adapter": true,
+    "fix_language_backbone": false,
+    "fix_lm_head": false,
+    "dataset_p": 1.0,
+    "train_split": "train",
+    "eval_split": "valid",
+    "min_pixels": 3136,
+    "max_pixels": 1605632
+  }
+}
