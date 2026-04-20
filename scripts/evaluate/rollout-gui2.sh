@@ -4,10 +4,10 @@ base_url=http://localhost:8000/v1
 workers=1
 max_frames=500
 temperature=0.9
-history_num=4
+history_num=0
 action_chunk_len=1
 instruction_type="recipe"
-model_local_path="/share/public_datasets/VLA/nitrogen/jarvisvla_models/JarvisVLA-Qwen2-VL-7B"
+model_local_path="/share/public_datasets/VLA/nitrogen/jarvisvla_models/qwen2-vl-stage3-test1-c1-e1-b8-a1"
 
 tasks=(
     smelt/iron_ingot

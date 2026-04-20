@@ -1,8 +1,8 @@
 epoch=1
-batch=16
+batch=8
 gradient_accumulation_steps=1
 card_number=1
-cuda_visible_devices=0,1,2,3,4,5,6,7
+cuda_visible_devices=0,1,2,3,4,5
 node_number=1
 total_number=$(($card_number * $node_number))
 training_port=24001
@@ -12,6 +12,15 @@ base_model_path="/share/public_datasets/VLA/nitrogen/jarvisvla_models/Qwen2-VL-7
 version="qwen2-vl-stage3-test1"
 WANDB_NAME="$version-c$total_number-e$epoch-b$batch-a$gradient_accumulation_steps"
 
+report_to=${REPORT_TO:-wandb}
+export WANDB_MODE=${WANDB_MODE:-online}
+if [[ "$report_to" == "wandb" && "$WANDB_MODE" == "online" && -z "${WANDB_API_KEY:-}" ]]; then
+    echo "[WARN] WANDB_API_KEY is not set; falling back to offline mode to avoid interactive login."
+    export WANDB_MODE=offline
+fi
+echo "[INFO] report_to=${report_to}, WANDB_MODE=${WANDB_MODE}"
+
+
 deepspeed --include localhost:$cuda_visible_devices --master_port=$training_port \
     jarvisvla/train/train.py \
     --deepspeed configs/deepspeed_config_s1.json \
@@ -20,7 +29,7 @@ deepspeed --include localhost:$cuda_visible_devices --master_port=$training_port
     --dataloader_pin_memory True \
     --seed 43 \
     --model_name_or_path $base_model_path \
-    --report_to "wandb" \
+    --report_to $report_to \
     --learning_rate 5e-6 \
     --max_grad_norm 1 \
     --weight_decay 0. \
@@ -34,14 +43,14 @@ deepspeed --include localhost:$cuda_visible_devices --master_port=$training_port
     --gradient_accumulation_steps $gradient_accumulation_steps \
     --do_train \
     --eval_strategy "steps" \
-    --eval_steps 200 \
+    --eval_steps 1600 \
     --save_strategy "steps" \
     --save_steps 1600 \
     --save_total_limit 5 \
     --output_dir "/share/public_datasets/VLA/nitrogen/jarvisvla_models/$WANDB_NAME" \
     --run_name $WANDB_NAME \
     --logging_strategy "steps" \
-    --logging_steps 1 \
+    --logging_steps 10 \
     --num_train_epochs $epoch \
     --gradient_checkpointing \
     --torch_dtype bfloat16 \

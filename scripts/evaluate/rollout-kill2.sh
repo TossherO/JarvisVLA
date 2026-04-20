@@ -1,17 +1,17 @@
 #!/bin/bash
 
 base_url=http://localhost:8000/v1
-workers=1
-max_frames=500
+workers=5
+max_frames=300
 temperature=0.9
-history_num=4
+history_num=0
 action_chunk_len=1
-instruction_type="recipe"
-model_local_path="/share/public_datasets/VLA/nitrogen/jarvisvla_models/JarvisVLA-Qwen2-VL-7B"
+instruction_type="normal"
+model_local_path="/share/public_datasets/VLA/nitrogen/jarvisvla_models/qwen2-vl-stage3-test1-c1-e1-b8-a1"
+
 
 tasks=(
-    smelt/iron_ingot
-    craft/craft_crafting_table
+    "kill/kill_zombie"
 )
 
 echo "Running for checkpoint $checkpoint..."
@@ -19,7 +19,7 @@ echo "Running for checkpoint $checkpoint..."
 log_path_name="$model_local_path-$checkpoint-$env_file"
 
 for task in "${tasks[@]}"; do
-    env_config="$task"
+    env_config=$task
 
     # Evaluate
     num_iterations=$(($workers / 5 + 1))

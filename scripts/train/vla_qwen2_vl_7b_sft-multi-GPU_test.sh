@@ -29,7 +29,7 @@ deepspeed --include localhost:$cuda_visible_devices --master_port=$training_port
     --dataloader_pin_memory True \
     --seed 43 \
     --model_name_or_path $base_model_path \
-    --report_to "$report_to" \
+    --report_to $report_to \
     --learning_rate 5e-6 \
     --max_grad_norm 1 \
     --weight_decay 0. \

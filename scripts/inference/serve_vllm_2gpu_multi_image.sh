@@ -6,7 +6,8 @@
 set -euo pipefail
 
 cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-0,1}
-model_name_or_path=${MODEL_PATH:-/share/public_datasets/VLA/nitrogen/jarvisvla_models/JarvisVLA-Qwen2-VL-7B}
+# model_name_or_path=${MODEL_PATH:-/share/public_datasets/VLA/nitrogen/jarvisvla_models/JarvisVLA-Qwen2-VL-7B}
+model_name_or_path=${MODEL_PATH:-/share/public_datasets/VLA/nitrogen/jarvisvla_models/qwen2-vl-stage3-test1-c1-e1-b8-a1}
 port=${PORT:-8000}
 tp_size=${TP_SIZE:-2}
 max_model_len=${MAX_MODEL_LEN:-8448}
