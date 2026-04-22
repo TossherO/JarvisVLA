@@ -44,11 +44,8 @@
   - `stage1_qwen2_vl_7b.json`
   - `stage2_qwen2_vl_7b.json`
   - `stage3_qwen2_vl_7b.json`
-- 新增启动脚本：`scripts/train/`
-  - `run_stage.sh`（统一入口）
-  - `stage1_train.sh`
-  - `stage2_train.sh`
-  - `stage3_train.sh`
+- 统一启动脚本：`scripts/train/run_stage.sh`
+- 多机多卡启动脚本：`scripts/train/run_stage_multinode.sh`
 
 `train.py` 新增支持：
 
@@ -71,10 +68,33 @@
 示例：
 
 ```bash
-bash scripts/train/stage1_train.sh
-bash scripts/train/stage2_train.sh
-bash scripts/train/stage3_train.sh
+bash scripts/train/run_stage.sh configs/stages/stage1_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage2_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage3_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage3_qwen2_vl_7b_test.json
 
-# 或使用统一入口
-bash scripts/train/run_stage.sh stage3 configs/stages/stage3_qwen2_vl_7b.json
+# 多机多卡（使用 hostfile）
+bash scripts/train/run_stage_multinode.sh configs/stages/stage3_qwen2_vl_7b.json
+
+# 可选：自定义 hostfile
+bash scripts/train/run_stage_multinode.sh configs/stages/stage3_qwen2_vl_7b.json scripts/train/hostfile
+
+# 可选：显式指定多机多卡映射
+DEEPSPEED_INCLUDE="hgx1:0,1,2,3@hgx2:0,1,2,3" \
+  bash scripts/train/run_stage_multinode.sh configs/stages/stage3_qwen2_vl_7b.json
 ```
+
+`train.py` 会在参数解析前读取 `--stage_config_path` 指向的 JSON，并将其中的默认参数注入 CLI（显式 CLI 参数优先级更高），因此 bash 脚本无需再预解析配置内容。
+
+`run_stage.sh` 当前行为：
+
+- 只接受一个位置参数：`<config_path>`。
+- 默认 `WANDB_MODE=offline`，如需在线同步可手动设置 `WANDB_MODE=online`。
+- 未设置 `CUDA_VISIBLE_DEVICES` 时，会自动选择当前机器上的全部可见 GPU。
+
+`run_stage_multinode.sh` 当前行为：
+
+- 接受参数：`<config_path> [hostfile_path]`。
+- 默认 hostfile：`scripts/train/hostfile`。
+- 默认 `WANDB_MODE=offline`。
+- 可通过 `DEEPSPEED_INCLUDE` 显式传入节点与 GPU 映射。

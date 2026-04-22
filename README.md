@@ -48,28 +48,36 @@ sh scripts/evaluate/rollout-kill.sh
 
 Prepare the dataset and base model, and write their locations in the shell below.
 
-Unified three-stage entrypoints:
+Unified training entrypoint:
 
 ```shell
-bash scripts/train/stage1_train.sh
-bash scripts/train/stage2_train.sh
-bash scripts/train/stage3_train.sh
-
-# Or use the generic launcher:
-bash scripts/train/run_stage.sh stage1 configs/stages/stage1_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage1_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage2_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage3_qwen2_vl_7b.json
+bash scripts/train/run_stage.sh configs/stages/stage3_qwen2_vl_7b_test.json
 ```
 
-- Single GPU
+Launcher defaults:
+
+- `WANDB_MODE` defaults to `offline` (can be overridden by exporting `WANDB_MODE=online`).
+- If `CUDA_VISIBLE_DEVICES` is set, training uses that list.
+- If `CUDA_VISIBLE_DEVICES` is unset, launcher auto-detects all local GPUs via `nvidia-smi`.
+- If `nvidia-smi` is unavailable, launcher falls back to GPU `0`.
+
+- Single-node (single/multi-GPU)
 ```shell
-sh scripts/vla/vla_qwen2_vl_7b_sft.sh
+bash scripts/train/run_stage.sh configs/stages/stage3_qwen2_vl_7b.json
 ```
-- Multi-GPU
+- Multi-node multi-GPU
 ```shell
-sh scripts/vla/vla_qwen2_vl_7b_sft-multi-GPU.sh
-```
-- Multi-Node
-```shell
-sh scripts/vla/vla_qwen2_vl_7b_sft-multi-node.sh
+bash scripts/train/run_stage_multinode.sh configs/stages/stage3_qwen2_vl_7b.json
+
+# Optional hostfile override:
+bash scripts/train/run_stage_multinode.sh configs/stages/stage3_qwen2_vl_7b.json scripts/train/hostfile
+
+# Optional explicit device mapping:
+DEEPSPEED_INCLUDE="hgx1:0,1,2,3@hgx2:0,1,2,3" \
+  bash scripts/train/run_stage_multinode.sh configs/stages/stage3_qwen2_vl_7b.json
 ```
 
 ---
